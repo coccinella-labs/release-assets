@@ -311,7 +311,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag }}
-          target_commitish: ${{ inputs.release_target_sha }}
           files: |
             *.tar.gz
             *.tar.gz.sha256
