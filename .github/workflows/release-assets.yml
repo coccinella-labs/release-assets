@@ -30,6 +30,10 @@ on:
         required: false
         type: string
         default: ""
+      publish_assets:
+        required: false
+        type: boolean
+        default: true
     secrets:
       github_token:
         required: true
@@ -169,7 +173,7 @@ jobs:
 
   publish-assets:
     needs: [build-assets, smoke-assets]
-    if: ${{ always() && needs.build-assets.result == 'success' && (needs.smoke-assets.result == 'success' || needs.smoke-assets.result == 'skipped') }}
+    if: ${{ inputs.publish_assets && always() && needs.build-assets.result == 'success' && (needs.smoke-assets.result == 'success' || needs.smoke-assets.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
