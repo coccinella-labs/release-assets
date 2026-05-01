@@ -124,19 +124,20 @@ jobs:
   smoke-assets:
     needs: build-assets
     runs-on: ${{ matrix.runner }}
-    if: ${{ matrix.smoke != false }}
     strategy:
       fail-fast: false
       matrix:
         include: ${{ fromJson(inputs.targets_json) }}
     steps:
       - name: Download asset bundle
+        if: ${{ matrix.smoke != false }}
         uses: actions/download-artifact@v4
         with:
           name: release-asset-${{ matrix.target_key }}
           path: dist
 
       - name: Extract packaged binary
+        if: ${{ matrix.smoke != false }}
         shell: bash
         run: |
           set -euo pipefail
@@ -160,6 +161,7 @@ jobs:
           PY
 
       - name: Smoke test binary
+        if: ${{ matrix.smoke != false }}
         shell: bash
         run: |
           set -euo pipefail
