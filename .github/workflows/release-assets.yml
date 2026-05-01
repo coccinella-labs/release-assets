@@ -245,6 +245,8 @@ jobs:
 
       - name: Sign packaged assets
         shell: bash
+        env:
+          TARGETS_JSON: ${{ inputs.targets_json }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -257,11 +259,12 @@ jobs:
           chmod 600 signing.pem
           python3 - <<'PY'
           import base64
+          import os
           import pathlib
           import subprocess
           import json
 
-          targets = json.loads('''${{ inputs.targets_json }}''')
+          targets = json.loads(os.environ['TARGETS_JSON'])
           for target in targets:
               archive = target['archive_name']
               sig = f"{archive}.sig"
@@ -274,14 +277,17 @@ jobs:
 
       - name: Generate manifest
         shell: bash
+        env:
+          TARGETS_JSON: ${{ inputs.targets_json }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json
+          import os
           import pathlib
           import subprocess
 
-          targets = json.loads('''${{ inputs.targets_json }}''')
+          targets = json.loads(os.environ['TARGETS_JSON'])
           published_at = __import__('datetime').datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
           cmd = [
               'python3',
