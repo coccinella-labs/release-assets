@@ -247,7 +247,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s' "${{ secrets.signing_key_pem_b64 }}" | base64 --decode > signing.pem
+          python3 - <<'PY'
+          import base64
+          import pathlib
+
+          value = """${{ secrets.signing_key_pem_b64 }}""".strip()
+          pathlib.Path("signing.pem").write_bytes(base64.b64decode(value))
+          PY
           chmod 600 signing.pem
           python3 - <<'PY'
           import base64
