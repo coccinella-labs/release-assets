@@ -1,0 +1,251 @@
+name: Release Assets
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+      release_target_sha:
+        required: true
+        type: string
+      binary_name:
+        required: true
+        type: string
+      package_path:
+        required: true
+        type: string
+      targets_json:
+        required: true
+        type: string
+      manifest_name:
+        required: false
+        type: string
+        default: release-manifest.json
+      cargo_build_args:
+        required: false
+        type: string
+        default: ""
+      public_key_b64:
+        required: false
+        type: string
+        default: ""
+    secrets:
+      github_token:
+        required: true
+      signing_key_pem_b64:
+        required: true
+
+jobs:
+  build-assets:
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(inputs.targets_json) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_target_sha }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.rust_target }}
+
+      - name: Run target setup script
+        if: ${{ matrix.setup_script != '' }}
+        shell: bash
+        run: ${{ matrix.setup_script }}
+
+      - name: Build release binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --release --locked --manifest-path "${{ inputs.package_path }}/Cargo.toml" --bin "${{ inputs.binary_name }}" --target "${{ matrix.rust_target }}" ${{ inputs.cargo_build_args }}
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          binary_path = Path("${{ matrix.binary_path }}")
+          archive_name = Path("${{ matrix.archive_name }}")
+          archive_format = "${{ matrix.archive_format }}"
+
+          if archive_format == "tar.gz":
+              with tarfile.open(archive_name, "w:gz") as archive:
+                  archive.add(binary_path, arcname=binary_path.name)
+          elif archive_format == "zip":
+              with zipfile.ZipFile(archive_name, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                  archive.write(binary_path, arcname=binary_path.name)
+          else:
+              raise SystemExit(f"unsupported archive format: {archive_format}")
+
+          digest = hashlib.sha256(archive_name.read_bytes()).hexdigest()
+          archive_name.with_suffix(archive_name.suffix + ".sha256").write_text(digest + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload asset bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-asset-${{ matrix.target_key }}
+          path: |
+            ${{ matrix.archive_name }}
+            ${{ matrix.archive_name }}.sha256
+
+  smoke-assets:
+    needs: build-assets
+    runs-on: ${{ matrix.runner }}
+    if: ${{ matrix.smoke != false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(inputs.targets_json) }}
+    steps:
+      - name: Download asset bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: release-asset-${{ matrix.target_key }}
+          path: dist
+
+      - name: Extract packaged binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          dist = Path('dist')
+          archive = dist / '${{ matrix.archive_name }}'
+          out = dist / 'extract'
+          out.mkdir(parents=True, exist_ok=True)
+          if '${{ matrix.archive_format }}' == 'tar.gz':
+              with tarfile.open(archive, 'r:gz') as f:
+                  f.extractall(out)
+          elif '${{ matrix.archive_format }}' == 'zip':
+              with zipfile.ZipFile(archive) as f:
+                  f.extractall(out)
+          else:
+              raise SystemExit('unsupported archive format')
+          PY
+
+      - name: Smoke test binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ matrix.smoke_command || '' }}" ]; then
+            cd dist/extract
+            eval "${{ matrix.smoke_command }}"
+          else
+            binary_name=$(basename "${{ matrix.binary_path }}")
+            ./dist/extract/$binary_name --version
+          fi
+
+  publish-assets:
+    needs: [build-assets, smoke-assets]
+    if: ${{ always() && needs.build-assets.result == 'success' && (needs.smoke-assets.result == 'success' || needs.smoke-assets.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_target_sha }}
+
+      - name: Download packaged assets
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-assets
+          pattern: release-asset-*
+
+      - name: Check signing key alignment
+        if: ${{ inputs.public_key_b64 != '' }}
+        run: |
+          python3 scripts/check-signing-key.py \
+            --private-key-b64 "${{ secrets.signing_key_pem_b64 }}" \
+            --public-key-b64 "${{ inputs.public_key_b64 }}"
+
+      - name: Flatten packaged assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          find dist-assets -type f -maxdepth 2 -exec cp {} . \;
+
+      - name: Sign packaged assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "${{ secrets.signing_key_pem_b64 }}" | base64 --decode > signing.pem
+          chmod 600 signing.pem
+          python3 - <<'PY'
+          import base64
+          import pathlib
+          import subprocess
+          import json
+
+          targets = json.loads('''${{ inputs.targets_json }}''')
+          for target in targets:
+              archive = target['archive_name']
+              sig = f"{archive}.sig"
+              subprocess.run([
+                  'openssl','pkeyutl','-sign','-rawin','-inkey','signing.pem','-in',archive,'-out',sig
+              ], check=True)
+              encoded = base64.b64encode(pathlib.Path(sig).read_bytes()).decode('utf-8')
+              pathlib.Path(sig + '.b64').write_text(encoded + '\n', encoding='utf-8')
+          PY
+
+      - name: Generate manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import subprocess
+
+          targets = json.loads('''${{ inputs.targets_json }}''')
+          published_at = __import__('datetime').datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+          cmd = [
+              'python3',
+              'scripts/generate-release-manifest.py',
+              '--version', '${{ inputs.release_tag }}',
+              '--published-at', published_at,
+          ]
+          repo = '${{ github.repository }}'
+          tag = '${{ inputs.release_tag }}'
+          for target in targets:
+              archive = target['archive_name']
+              sha = pathlib.Path(f'{archive}.sha256').read_text(encoding='utf-8').strip()
+              sig = pathlib.Path(f'{archive}.sig.b64').read_text(encoding='utf-8').strip()
+              url = f'https://github.com/{repo}/releases/download/{tag}/{archive}'
+              cmd.extend(['--artifact', f"{target['target_key']}={url}={sha}={sig}"])
+          cmd.extend(['--output', '${{ inputs.manifest_name }}'])
+          subprocess.run(cmd, check=True)
+          PY
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          target_commitish: ${{ inputs.release_target_sha }}
+          files: |
+            *.tar.gz
+            *.tar.gz.sha256
+            *.tar.gz.sig
+            *.zip
+            *.zip.sha256
+            *.zip.sig
+            ${{ inputs.manifest_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.github_token }}
