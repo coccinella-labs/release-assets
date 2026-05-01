@@ -61,6 +61,21 @@ jobs:
         shell: bash
         run: ${{ matrix.setup_script }}
 
+      - name: Export target build env
+        if: ${{ matrix.build_env_json != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+
+          env_items = json.loads('''${{ matrix.build_env_json }}''')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+              for key, value in env_items.items():
+                  handle.write(f"{key}={value}\n")
+          PY
+
       - name: Build release binary
         shell: bash
         run: |
