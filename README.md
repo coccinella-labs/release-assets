@@ -42,7 +42,7 @@ File:
 
 ### Secrets
 
-- `github_token`
+- `release_token`
 - `signing_key_pem_b64`
 
 ## Target schema
@@ -59,7 +59,8 @@ File:
     "archive_name": "harper-linux-x86_64.tar.gz",
     "archive_format": "tar.gz",
     "smoke": true,
-    "setup_script": ""
+    "setup_script": "",
+    "build_env_json": ""
   }
 ]
 ```
@@ -67,6 +68,7 @@ File:
 Optional target fields:
 - `smoke_command`
 - `setup_script`
+- `build_env_json`
 
 ## Signing model
 
