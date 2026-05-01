@@ -35,7 +35,7 @@ on:
         type: boolean
         default: true
     secrets:
-      github_token:
+      release_token:
         required: true
       signing_key_pem_b64:
         required: true
@@ -269,4 +269,4 @@ jobs:
             *.zip.sig
             ${{ inputs.manifest_name }}
         env:
-          GITHUB_TOKEN: ${{ secrets.github_token }}
+          GITHUB_TOKEN: ${{ secrets.release_token }}
