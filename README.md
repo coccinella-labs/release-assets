@@ -72,7 +72,7 @@ Optional target fields:
 
 ## Signing model
 
-The workflow signs packaged artifacts with the `signing_key_pem_b64` secret and verifies that the derived public key matches `public_key_b64` before publishing. Set `publish_assets: false` to use the workflow as a build-and-smoke preflight without uploading release assets.
+The workflow signs packaged artifacts with the `signing_key_pem_b64` secret and verifies that the derived public key matches `public_key_b64` before publishing. The signing-key alignment check is performed inside the reusable workflow itself; caller repositories do not need to vendor a helper script for it. Set `publish_assets: false` to use the workflow as a build-and-smoke preflight without uploading release assets.
 
 ## Manifest contract
 
