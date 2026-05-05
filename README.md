@@ -14,6 +14,7 @@ It handles:
 - release manifest generation
 - optional smoke validation
 - GitHub Release asset upload
+- immutable-release-safe asset publishing
 
 It does not handle:
 - version bumping
@@ -80,3 +81,14 @@ Each artifact entry includes:
 - `url`
 - `sha256`
 - `signature`
+
+## Existing release assets
+
+Before uploading, the publish job checks the release named by `release_tag`.
+
+- If the release does not exist, assets are uploaded normally.
+- If the release exists and none of the expected assets exist, assets are uploaded normally.
+- If all expected assets already exist, upload is skipped and the job succeeds.
+- If only some expected assets exist, the job fails before upload instead of trying to overwrite or delete assets.
+
+This avoids rerun failures on immutable GitHub Releases, where deleting existing assets is not allowed.

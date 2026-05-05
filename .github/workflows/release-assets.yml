@@ -307,7 +307,71 @@ jobs:
           subprocess.run(cmd, check=True)
           PY
 
+      - name: Check existing release assets
+        id: release_assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.release_token }}
+          TARGETS_JSON: ${{ inputs.targets_json }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          MANIFEST_NAME: ${{ inputs.manifest_name }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import sys
+
+          targets = json.loads(os.environ["TARGETS_JSON"])
+          expected = [os.environ["MANIFEST_NAME"]]
+          for target in targets:
+              archive = target["archive_name"]
+              expected.extend([archive, f"{archive}.sha256", f"{archive}.sig"])
+
+          tag = os.environ["RELEASE_TAG"]
+          result = subprocess.run(
+              [
+                  "gh",
+                  "api",
+                  f"repos/{os.environ['GITHUB_REPOSITORY']}/releases/tags/{tag}",
+                  "--jq",
+                  ".assets[].name",
+              ],
+              text=True,
+              capture_output=True,
+          )
+
+          output_path = pathlib.Path(os.environ["GITHUB_OUTPUT"])
+          if result.returncode != 0:
+              output_path.write_text("upload_assets=true\n", encoding="utf-8")
+              print(f"release {tag} does not exist yet; uploading assets")
+              raise SystemExit(0)
+
+          existing = {line.strip() for line in result.stdout.splitlines() if line.strip()}
+          expected_set = set(expected)
+          present = expected_set & existing
+          missing = expected_set - existing
+
+          if not present:
+              output_path.write_text("upload_assets=true\n", encoding="utf-8")
+              print(f"release {tag} exists without matching assets; uploading assets")
+              raise SystemExit(0)
+
+          if not missing:
+              output_path.write_text("upload_assets=false\n", encoding="utf-8")
+              print(f"release {tag} already has all expected assets; skipping upload")
+              raise SystemExit(0)
+
+          print("release already has a partial asset set; refusing to overwrite assets", file=sys.stderr)
+          print("present:", ", ".join(sorted(present)), file=sys.stderr)
+          print("missing:", ", ".join(sorted(missing)), file=sys.stderr)
+          raise SystemExit(1)
+          PY
+
       - name: Upload release assets
+        if: ${{ steps.release_assets.outputs.upload_assets == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag }}
