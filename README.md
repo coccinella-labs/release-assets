@@ -1,5 +1,7 @@
 # release-assets
 
+[![Release](https://img.shields.io/github/v/release/libnudget/release-assets?logo=github&label=latest)](https://github.com/libnudget/release-assets/releases)
+
 Reusable GitHub Actions workflow for building, packaging, signing, manifesting, smoke-testing, and publishing release assets for Rust CLIs.
 
 ## What it does
