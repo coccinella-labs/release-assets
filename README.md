@@ -4,7 +4,7 @@
 
 # release-assets
 
-[![Release](https://img.shields.io/github/v/release/libnudget/release-assets?logo=github&label=latest)](https://github.com/libnudget/release-assets/releases)
+[![Release](https://img.shields.io/github/v/release/coccinella-labs/release-assets?logo=github&label=latest)](https://github.com/coccinella-labs/release-assets/releases)
 
 Reusable GitHub Actions workflow for building, packaging, signing, manifesting, smoke-testing, and publishing release assets for Rust CLIs.
 
@@ -28,7 +28,7 @@ It does not handle:
 - tag selection
 - changelog generation
 
-Those concerns belong in a separate release orchestration action such as `libnudget/release`.
+Those concerns belong in a separate release orchestration action such as `coccinella-labs/release`.
 
 ## Reusable workflow
 
